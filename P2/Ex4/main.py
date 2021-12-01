@@ -37,7 +37,7 @@ def ReadAllUpTo(stop_key):
 
     for pressed_key in pressed_keys:
         if str.isnumeric(pressed_key):
-            count_pressed_numbers +=1
+            count_pressed_numbers += 1
             pressed_numbers.append(pressed_key)
         else:
             count_pressed_others +=1

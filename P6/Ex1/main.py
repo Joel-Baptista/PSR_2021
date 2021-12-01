@@ -4,8 +4,8 @@ import cv2 as cv
 import numpy as np
 
 
-def paint(event, x, y, flags, o):
-    pass
+def paint(event, x, y, flags, param):
+    print('x: ' + str(x) +'\ny: ' + str(y))
 
 
 def main():
@@ -25,7 +25,8 @@ def main():
 
     # Alinea c)
 
-    img = np.ones((600, 400))
+    img = 255*np.ones((600, 400), 'uint8')
+    print(img)
     cv.imshow('Ex1c', img)
     cv.setMouseCallback('Ex1c', paint)
     cv.waitKey(0)
