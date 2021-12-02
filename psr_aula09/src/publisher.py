@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-import argparse
 
 import rospy
 from psr_aula8_ex3.msg import Dog
+import colorama
 
+def print_msg(msg):
+    htc = rospy.get_param("/highlight_text_color")
+    rospy.loginfo("Received a dog named " + getattr(colorama.Fore, htc) +
+                  msg.name + colorama.Style.RESET_ALL +
+                  ' which is ' + str(msg.age) +
+                  ' years old')
 
 def main():
     # ---------------------------------------------------
     # INITIALIZATION
     # ---------------------------------------------------
-    parser = argparse.ArgumentParser(description='PSR argparse example.')
-    parser.add_argument('--rate', type=float,default=1)
-    args = vars(parser.parse_args())
-
-    global dog
 
     dog = Dog()
     dog.name = 'max'
@@ -22,12 +23,10 @@ def main():
     dog.brothers.append('lily')
     dog.brothers.append('boby')
 
-
-    rospy.init_node('talker', anonymous=True)
+    rospy.init_node('publisher', anonymous=True)
     pub = rospy.Publisher('chatter', Dog, queue_size=10)
 
     # pub2 = rospy.Publisher('A17', String, queue_size=10)
-    rate = rospy.Rate(args['rate'])  # 10hz
 
     # ---------------------------------------------------
     # Execution
@@ -37,11 +36,13 @@ def main():
     while not rospy.is_shutdown():
         # text_to_send = args['message'] + str(rospy.get_time())
 
-        rospy.loginfo(dog)
+        print_msg(dog)
         pub.publish(dog)
 
         # pub2.publish('Aqui vai um para sul')
         # pub2.publish('Aqui vai um para sul')
+        f = rospy.get_param("~frequency", default=1)
+        rate = rospy.Rate(f)  # 10hz
         rate.sleep()
         # rospy.spin()
 
