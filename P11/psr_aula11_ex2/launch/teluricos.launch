@@ -1,0 +1,11 @@
+<launch>
+
+  <rosparam command="load" file="$(find psr_aula11_ex2)/params/teluricos.yaml" />
+
+  <node name="Mercurio" pkg="psr_aula11_ex2" type="circular_frame.py" output="screen" />
+  <node name="Venus" pkg="psr_aula11_ex2" type="circular_frame.py" output="screen" />
+  <node name="Terra" pkg="psr_aula11_ex2" type="circular_frame.py" output="screen" />
+  <node name="Marte" pkg="psr_aula11_ex2" type="circular_frame.py" output="screen" />
+  <node name="Lua" pkg="psr_aula11_ex2" type="circular_frame.py" output="screen" />
+
+</launch>

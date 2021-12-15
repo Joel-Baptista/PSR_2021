@@ -1,0 +1,29 @@
+highlight_text_color: "MAGENTA"
+my_name: "Joel"
+
+parent: "Sol"
+
+Mercurio/frequency: 4.15
+Venus/frequency: 1.63
+Terra/frequency: 1
+Marte/frequency: 0.53
+Lua/frequency: 13.4
+
+Mercurio/radius: 0.387
+Venus/radius: 0.723
+Terra/radius: 1
+Marte/radius: 1.52
+Lua/radius: 0.0257
+
+Mercurio/parent: "Sol"
+Venus/parent: "Sol"
+Terra/parent: "Sol"
+Marte/parent: "Sol"
+Lua/parent: "Terra"
+
+
+Mercurio/name: "Mercurio"
+Venus/name: "Venus"
+Terra/name: "Terra"
+Marte/name: "Marte"
+Lua/name: "Lua"

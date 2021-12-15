@@ -16,13 +16,19 @@ def main():
     br = tf2_ros.TransformBroadcaster()
     t = geometry_msgs.msg.TransformStamped()
 
-    t.header.frame_id = "world"
-    t.child_frame_id = 'child'
-    rate = rospy.Rate(100)
+    t.header.frame_id = rospy.get_param("~parent")
+    t.child_frame_id = rospy.get_param("~name")
+    rate = rospy.Rate(20*rospy.get_param("~frequency"))
 
-    theta_inc = math.pi/50
+    q = tf_conversions.transformations.quaternion_from_euler(0, 0, 0)
+    t.transform.rotation.x = q[0]
+    t.transform.rotation.y = q[1]
+    t.transform.rotation.z = q[2]
+    t.transform.rotation.w = q[3]
+
+    theta_inc = math.pi/500
     theta = 0
-    r = 2
+    r = 3*rospy.get_param(("~radius"))
     while not rospy.is_shutdown():
         x = r*math.cos(theta)
         y = r*math.sin(theta)
@@ -33,11 +39,6 @@ def main():
         t.transform.translation.x = x
         t.transform.translation.y = y
         t.transform.translation.z = 0
-        q = tf_conversions.transformations.quaternion_from_euler(0, 0, theta)
-        t.transform.rotation.x = q[0]
-        t.transform.rotation.y = q[1]
-        t.transform.rotation.z = q[2]
-        t.transform.rotation.w = q[3]
 
         br.sendTransform(t)
 
