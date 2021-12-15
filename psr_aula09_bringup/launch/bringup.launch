@@ -1,6 +1,13 @@
 <launch>
-  <node name="publisherA" pkg="psr_aula09" type="publisher.py" output="screen">
 
+  <rosparam command="load" file="$(find psr_aula09)/param/params.yaml" />
 
-  </node>
+  <node name="publisherA" pkg="psr_aula09" type="publisher.py" output="screen" />
+  <node name="publisherB" pkg="psr_aula09" type="publisher.py" output="screen" />
+  <node name="publisherC" pkg="psr_aula09" type="publisher.py" output="screen" />
+
+  <node name="subscriberAB1" pkg="psr_aula09" type="subscriber.py" output="screen" />
+  <node name="subscriberAB2" pkg="psr_aula09" type="subscriber.py" output="screen" />
+  <node name="subscriberC" pkg="psr_aula09" type="subscriber.py" output="screen" />
+
 </launch>

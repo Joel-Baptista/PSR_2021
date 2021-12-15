@@ -1,2 +1,6 @@
 highlight_text_color: "MAGENTA"
 my_name: "Joel"
+
+publisherA/frequency: 1
+publisherB/frequency: 3
+publisherC/frequency: 10
