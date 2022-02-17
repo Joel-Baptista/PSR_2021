@@ -1,0 +1,342 @@
+#!/usr/bin/env python3
+import argparse
+import math
+
+import cv2
+from cv_bridge import CvBridge
+import numpy as np
+import colorama
+from operator import itemgetter
+import rospy
+import copy
+from sensor_msgs.msg import Image, LaserScan, CameraInfo
+from std_msgs.msg import Header, ColorRGBA
+import tf2_geometry_msgs
+import tf2_ros
+from visualization_msgs.msg import Marker, MarkerArray
+from geometry_msgs.msg import Twist, PoseStamped, Point, Pose, Vector3
+
+
+class Camera:
+    def __init__(self):
+        # <==============================================================>
+        # <================ VARIABLE INITIATION =========================>
+        # <==============================================================>
+
+        # <----------------COMPUTER VISION VARIABLES--------------------->
+
+        self.window_name = 'CV_image'
+
+        self.kernel_lineY = np.ones((10, 1), np.uint8) # These are matrixs used for morfologic transformation
+        self.kernel_lineX = np.ones((1, 10), np.uint8) # applied on the binarized images
+        self.kernel_square = np.ones((3, 3), np.uint8)
+
+        self.img = np.zeros((100, 200))
+
+        self.camera_info_exist = False
+
+        self.spotedPlayers = []
+
+        # <-------------------LIDAR 2D VARIABLES------------------------->
+
+        self.LidarPoints = []
+        self.Lidar_object_centroid = []
+        self.Lidar_object_points = []
+
+        # <-------------------COMMUNICATION VARIABLES-------------------->
+
+        self.name = rospy.get_name()
+
+        self.name = self.name.strip("/")
+        print("My player name is " + self.name)
+
+        topic_image = "/" + self.name + '/camera/rgb/image_raw'
+        topic_laser = "/" + self.name + '/scan'
+        topic_camera = "/" + self.name + '/camera/rgb/camera_info'
+        topic_marker = "/" + self.name + '/markers'
+
+        print("I'm subscribing to " + topic_image)
+        print("I'm subscribing to " + topic_laser)
+        print("I'm subscribing to " + topic_camera)
+        print("I'm publishing to " + topic_marker)
+
+        # <==============================================================>
+        # <================ COMMUNICATION INITIATION ====================>
+        # <==============================================================>
+
+        # <-------------------SUBSCRIBERS INITIATION--------------------->
+        # Subscribes to needed topics to retrieve necessary information
+
+        self.subscriber_img = rospy.Subscriber(topic_image, Image, self.getImageCallback) # Gets image from camera
+        self.subscriber_laser = rospy.Subscriber(topic_laser, LaserScan, self.getLaserCallback) # Gets points from laser
+        self.subscriber_camera = rospy.Subscriber(topic_camera, CameraInfo, self.getCameraInfoCallback) # Gets parameters from camera
+
+        # <-------------------PUBLISHERS INITIATION--------------------->
+        # Publishes information to topics
+
+        self.publisher_markers = rospy.Publisher(topic_marker, Marker, queue_size=10) # Publishes markers to rviz to ensure that the data is correct
+        self.timer = rospy.Timer(rospy.Duration(0.1), self.sendMarkersCallback)
+
+        # <-------------------TF_LISTENER INITIATION--------------------->
+        # Initiates frames' transform listener in order easily transform data from one frame from another frame
+
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+
+    # <==========================================================================================================>
+    # <---------------------------------------------------------------------------------------------------------->
+    # <------------------------------------COMMUNICATION FUNCTIONS----------------------------------------------->
+    # <---------------------------------------------------------------------------------------------------------->
+    # <==========================================================================================================>
+
+    def sendMarkersCallback(self, event): # Publishes markers with Lidar 2D information
+
+        marker = Marker()
+        marker.ns = "Sphere"
+        marker.header = Header(stamp=rospy.Time.now(), frame_id=self.name + "/base_scan")
+        marker.type = Marker.SPHERE_LIST
+
+        scale = Vector3(x=0.1, y=0.1, z=0.1)
+        marker.scale = scale
+
+        color = ColorRGBA(r=1, g=0, b=1, a=0.5)
+        marker.color = color
+
+        for lidarPoints in self.LidarPoints:
+            marker.points.append(lidarPoints.pose.position)
+
+        self.publisher_markers.publish(marker)
+
+    def getCameraInfoCallback(self, msg): # Gets the camera parameters from the robot's camera
+        try:
+            self.D = msg.D
+            self.K = msg.K
+            self.P = msg.P
+            self.height = msg.height
+            self.width = msg.width
+
+            self.camera_info_exist = True
+
+        except(tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+            self.camera_info_exist = False
+            rospy.logerr("Could not get camera parameters.")
+
+    def getLaserCallback(self, laser): # Gets Lidar 2D points from the robot's sensor
+        self.LidarPoints = []
+
+        lidar_array = np.empty((0, 3), float)
+
+        for i, range in enumerate(laser.ranges):
+            theta = laser.angle_min + laser.angle_increment * i
+            if ((math.pi / 5 >= theta >= 0) or ((9 * math.pi) / 5 <= theta <= 2 * math.pi)) and not math.isinf(range):
+                # The if statement limits the angle of the Lidar 2D point that will be analised (angles can be changed if needed)
+
+                x = range * math.cos(theta)
+                y = range * math.sin(theta)
+                z = 0
+
+                lidar_array = np.append(lidar_array, np.array([[x, y, z]]), axis=0)
+
+        lidar_array_sorted = sorted(lidar_array, key=itemgetter(1))
+
+        for lidar_point in lidar_array_sorted:
+
+            poseStamped = PoseStamped()
+            point = Point()
+
+            poseStamped.header.stamp = rospy.Time.now()
+            poseStamped.header.frame_id = self.name + "/base_scan"
+
+            point.x = lidar_point[0]
+            point.y = lidar_point[1]
+            point.z = lidar_point[2]
+
+            poseStamped.pose.position = point
+
+            LaserPoints_in_camera = poseStamped
+
+            self.LidarPoints.append(LaserPoints_in_camera)
+
+
+
+    # <==========================================================================================================>
+    # <---------------------------------------------------------------------------------------------------------->
+    # <-------------------------------------------LIDAR PROCESSING----------------------------------------------->
+    # <---------------------------------------------------------------------------------------------------------->
+    # <==========================================================================================================>
+
+    def lidar_object_detection(self, lidarpoints):
+        x_prev = 1000
+        y_prev = 1000
+
+        tresh = 0.2
+
+        points_list = []
+        array_points = np.empty((0, 2), float)
+        # print("-----------NEW READING---------------")
+        for i, lidar_point in enumerate(lidarpoints):
+            x = lidar_point.pose.position.x
+            y = lidar_point.pose.position.y
+
+            dist = math.sqrt((x - x_prev)**2 + (y - y_prev)**2)
+            # print(dist)
+            # print(str((x, y)))
+            if dist > tresh:
+                # print("---------NEW OBJECT--------")
+                if i > 0:
+                    points_list.append(array_points)
+
+                array_points = np.empty((0, 2), float)
+
+            array_points = np.append(array_points, np.array([[x, y]]), axis=0)
+            x_prev = x
+            y_prev = y
+
+        points_list.append(array_points)
+
+        # print(points_list)
+        # print("----------------NEW---------------------")
+        # print(len(points_list))
+
+        return points_list
+
+        # for object_points in points_list:
+        #     self.Lidar_object_centroid.append(np.mean(object_points, axis=0))
+
+# <==========================================================================================================>
+# <---------------------------------------------------------------------------------------------------------->
+# <-------------------------------------------IMAGE PROCESSING----------------------------------------------->
+# <---------------------------------------------------------------------------------------------------------->
+# <==========================================================================================================>
+
+
+    def getImageCallback(self, img): # Gets image from robot's camera and coverts the image to be used by OpenCV
+        bridge = CvBridge()
+        cv_img = bridge.imgmsg_to_cv2(img, desired_encoding='passthrough')
+        cv_bgr = cv2.cvtColor(cv_img, cv2.COLOR_RGB2BGR)
+        cv2.imshow(self.window_name, cv_bgr)
+        self.img = cv_bgr
+        key = cv2.waitKey(1)
+
+        self.color_segmentation()
+
+    def color_segmentation(self): # Creates binary masks for especified colors
+
+        mask_R = cv2.inRange(self.img, (0, 0, 100), (0, 0, 256))
+        mask_G = cv2.inRange(self.img, (0, 100, 0), (0, 256, 0))
+        mask_B = cv2.inRange(self.img, (100, 0, 0), (256, 0, 0))
+
+        mask = cv2.bitwise_or(mask_R, mask_G)
+        mask = cv2.bitwise_or(mask, mask_B)
+
+        # cv2.imshow('Binary', mask)
+        # key = cv2.waitKey(1)
+
+        self.R_mask = mask_R
+        self.G_mask = mask_G
+        self.B_mask = mask_B
+
+        self.spotedPlayers = [] # warning - The list of spotted players will be reseted every iteration
+        # This program is a goldfish, it will have no memory :(
+
+        self.object_detection(self, mask=self.R_mask, color="Red")
+        self.object_detection(self, mask=self.G_mask, color="Green")
+        self.object_detection(self, mask=self.B_mask, color="Blue")
+
+    def object_detection(self, event, mask, color): # Using the masks from the previous function, it detects objects in the masks
+
+        mask_dilation = cv2.dilate(mask, self.kernel_lineY, iterations=2) # Dilates the mask in the Y-direction, because the robots are built by layers
+        mask_closing = cv2.morphologyEx(mask_dilation, cv2.MORPH_CLOSE, self.kernel_square) # Closes the holes in the mask
+        mask_dilation = cv2.dilate(mask_closing, self.kernel_lineX, iterations=2) # Dilates the mask in the X-direction to mantain the robot's shape
+        mask_erode = cv2.erode(mask_dilation, self.kernel_square, iterations=7) # Because of all the previous dilations, an erode function is needed
+
+        mask = copy.deepcopy(mask_erode)
+
+        contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE) # finds objects
+
+        for i in range(0, len(contours)):
+            M = cv2.moments(contours[i])
+
+            if M['m00'] != 0:
+                cX = int(M['m10'] / M['m00'])  # With the moments, calculates the object's centroid
+                cY = int(M['m01'] / M['m00'])
+
+                cv2.circle(self.img, (cX, cY), 5, (0, 0, 255), -1)
+
+                cv2.add(self.img, (-10, 60, -10, 0), dst=self.img, mask=mask)
+
+                player_mask = np.zeros(self.img.shape)
+                player_mask = cv2.fillPoly(player_mask, pts=[contours[i]], color=(255, 255, 255))
+                player = {"color": color, "position": (cX, cY), "mask": player_mask}
+
+                self.spotedPlayers.append(player)
+
+        array_lidarPixels, num_points = self.points_to_pixels()
+
+        if len(array_lidarPixels) > 0:
+            for idx in range(0, num_points):
+                lidarPixel = tuple(map(tuple, np.around(array_lidarPixels[0][idx].astype(int), 0)))[0]
+                cv2.circle(self.img, lidarPixel, 2, (255, 0, 255), -1)
+
+        cv2.imshow('FinalImage', self.img)
+        key = cv2.waitKey(1)
+
+    def points_to_pixels(self): # Converts 3D points to 2D pixels in the image
+        array_lidarPoints = np.zeros((len(self.LidarPoints), 3))
+
+        LaserPoints_in_camera = []
+
+        # As the points are already on the camera's frame, there is no rotation and translation needed
+        R = np.array([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]])
+        T = np.array([0., 0., 0.])
+
+        for laser_point in self.LidarPoints:
+            LaserPoint_in_camera = self.tf_buffer.transform(laser_point, self.name + "/camera_rgb_frame",
+                                                         rospy.Duration(1))
+            LaserPoints_in_camera.append(LaserPoint_in_camera)
+
+        # print(LaserPoint_in_camera)
+
+        obejct_points_in_camera = self.lidar_object_detection(LaserPoints_in_camera)
+        # print(obejct_points_in_camera)
+
+        for object in obejct_points_in_camera:
+            idx = 0
+            for lidarPoint in object:
+                # As the Lidar points come in meters, and the cameras parameters are in milimeters, it was necessary to scale the values
+                # The axis x, y and z also had to be switched because OpenCV and the frames of Lidar were not compatible
+
+                x = -lidarPoint.pose.position.y/1000
+                y = lidarPoint.pose.position.z/1000
+                z = lidarPoint.pose.position.x/1000
+
+                vector_lidarPoint = np.array([x, y, z])
+
+                array_lidarPoints[idx] = vector_lidarPoint
+                idx += 1
+
+            if self.camera_info_exist and len(array_lidarPoints) > 0:
+                K = np.asarray(self.K).reshape((3, 3))
+                array_lidarPixels = cv2.projectPoints(array_lidarPoints, R, T, K, self.D)
+            else:
+                array_lidarPixels = np.array([])
+
+
+
+        return array_lidarPixels, len(array_lidarPoints)
+
+
+def main():
+    # ---------------------------------------------------
+    # INITIALIZATION
+    # ---------------------------------------------------
+
+    rospy.init_node('Camera', anonymous=False)
+
+    camera = Camera()
+
+    rospy.spin()
+
+
+if __name__ == '__main__':
+    main()

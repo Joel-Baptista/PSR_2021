@@ -1,0 +1,48 @@
+<launch>
+    <arg name="player_name" default="p_jbaptista"/>
+    <arg name="player_color" default="Red"/>
+    <arg name="x_pos" default="0.0"/>
+    <arg name="y_pos" default="-1.0"/>
+    <arg name="z_pos" default="0.0"/>
+    <arg name="visual" default="True"/>
+    <arg name="rviz_file" default="visualize"/>
+
+    <group ns="$(arg player_name)">
+        <param name="tf_prefix" value="$(arg player_name)"/>
+        
+        <param name="robot_description" command="$(find xacro)/xacro --inorder $(find p_jbaptista_description)/urdf/p_jbaptista.urdf.xacro player_name:=$(arg player_name) player_color:=$(arg player_color)" />
+
+        <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+
+<!--        <include file="$(find p_jbaptista_bringup)/launch/visualize.launch"/>-->
+    </group>
+
+<!--    <param name="robot_description" command="$(find xacro)/xacro &#45;&#45;inorder $(find turtlebot3_description)/urdf/turtlebot3_$(arg model).urdf.xacro" />-->
+
+    <include file="$(find p_jbaptista_bringup)/launch/spawn.launch">
+        <arg name="player_name" value="$(arg player_name)"/>
+        <arg name="x_pos" value="$(arg x_pos)"/>
+        <arg name="y_pos" value="$(arg y_pos)"/>
+        <arg name="z_pos" value="$(arg z_pos)"/>
+    </include>
+
+    <group if="$(arg visual)">
+        <include file="$(find p_jbaptista_bringup)/launch/visualize.launch">
+            <arg name="rviz_file" value="$(arg rviz_file)"/>
+        </include>
+    </group>
+
+<!--    <group if="$(arg visual)">-->
+<!--        <group ns="$(arg player_name">-->
+<!--            <node pkg="p_jbaptista_cv" type="p_jbaptista_cv" name="player_cv" output="screen"/>-->
+<!--        </group>-->
+<!--    </group>-->
+
+
+
+<!--    <group ns="$(arg player_name)">-->
+<!--        <node pkg="rqt_robot_steering" type="rqt_robot_steering" name="teleop_rqt" output="screen">-->
+<!--            <param name="~default_topic" value="/$(arg player_name)/cmd_vel"/>-->
+<!--        </node>-->
+<!--    </group>-->
+</launch>

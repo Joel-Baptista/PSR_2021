@@ -1,0 +1,15 @@
+<launch>
+    <arg name="player_name" default="p_jbaptista"/>
+
+    <group ns="$(arg player_name)">
+
+        <node pkg="rqt_robot_steering" type="rqt_robot_steering" name="teleop_rqt" output="screen"/>
+
+        <param name="~default_topic" value="/$(arg player_name)/cmd_vel"/>
+    </group>
+
+
+
+
+</launch>
+

@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+import argparse
+import math
+
+import colorama
+import rospy
+import copy
+
+import tf2_geometry_msgs
+import tf2_ros
+from geometry_msgs.msg import Twist, PoseStamped
+
+
+class Driver:
+    def __init__(self):
+
+        self.goal = PoseStamped()
+        self.goal_active = False
+
+        self.speed = 0
+        self.angle = 0
+        self.name = rospy.get_name()
+        self.name = self.name.strip("/")
+        print("My player name is " + self.name)
+
+        self.publisher_command = rospy.Publisher("/" + self.name + '/cmd_vel', Twist, queue_size=1)
+
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+
+        self.timer = rospy.Timer(rospy.Duration(0.1), self.sendCommandCallback)
+
+        self.goal_sub = rospy.Subscriber("/move_base_simple/goal", PoseStamped, self.goalReceivedCallBack)
+
+    def goalReceivedCallBack(self, msg):
+
+        try:
+            self.goal = self.tf_buffer.transform(msg, self.name + "/odom", rospy.Duration(1))
+            self.goal_active = True
+            rospy.logwarn("Setting new goal")
+        except(tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+            self.goal_active = False
+            rospy.logerr("Could not transform goal to odom frame. Will ignore this goal.")
+
+    def driveStraight(self, max_speed=1.3, min_speed=0.5):
+        goal_copy = copy.deepcopy(self.goal)
+        goal_copy.header.stamp = rospy.Time.now()
+
+        goal_in_base_link = self.tf_buffer.transform(goal_copy, self.name + "/base_footprint", rospy.Duration(1))
+
+        x = goal_in_base_link.pose.position.x
+        y = goal_in_base_link.pose.position.y
+
+
+        self.angle = math.atan2(y, x)
+
+        print(self.angle)
+        if abs(self.angle) > math.pi - 0.8:
+            drive_back = -1
+        else:
+            drive_back = 1
+
+        if abs(self.angle) >= math.pi/4 and abs(self.angle) <= math.pi/2:
+            max_speed = 0.3
+        elif abs(self.angle) >= 0.5 and abs(self.angle) <= math.pi/4:
+            max_speed = 0.5
+        elif abs(self.angle) >= 0.3 and abs(self.angle) < 0.5 :
+            max_speed = 0.7
+        elif abs(self.angle) >= 0.15 and abs(self.angle) < 0.3:
+            max_speed = 1.0
+        elif abs(self.angle) > math.pi/4:
+            max_speed = 0.3
+
+        distance_to_goal = math.sqrt(x**2 + y**2)
+
+        self.speed = max(min_speed, 0.5 * distance_to_goal)
+        self.speed = min(max_speed, self.speed)
+
+        self.speed = drive_back * self.speed
+
+        if distance_to_goal <= 0.1:
+            self.goal_active = False
+
+    def sendCommandCallback(self, event):
+        # print("Timer called")
+
+        if not self.goal_active:
+            self.angle = 0
+            self.speed = 0
+        else:
+            self.driveStraight()
+
+        twist = Twist()
+        twist.linear.x = self.speed
+        twist.angular.z = self.angle
+
+        self.publisher_command.publish(twist)
+
+
+def main():
+    # ---------------------------------------------------
+    # INITIALIZATION
+    # ---------------------------------------------------
+
+    rospy.init_node('p_jbaptista', anonymous=False)
+
+    # red_players = rospy.get_param("/red_players")
+    # blue_players = rospy.get_param("/blue_players")
+    # green_players = rospy.get_param("/green_players")
+
+    my_name = rospy.get_name()
+
+    my_name = my_name.strip("/")
+
+    # if my_name in red_players:
+    #     my_team, prey_team, hunter_team = "red", "green", "blue"
+    #     print("My name is " + my_name + ". I am team " + colorama.Fore.RED + my_team + colorama.Style.RESET_ALL + ". I am hunting "
+    #           + colorama.Fore.GREEN + str(green_players) + colorama.Style.RESET_ALL +" and fleeing from " + colorama.Fore.BLUE +str(blue_players) + colorama.Style.RESET_ALL + ".")
+    # elif my_name in green_players:
+    #     my_team, prey_team, hunter_team = "green", "green", "blue"
+    #     print("My name is " + my_name + ". I am team " + colorama.Fore.GREEN + my_team + colorama.Style.RESET_ALL + ". I am hunting "
+    #         + colorama.Fore.GREEN + str(green_players) + colorama.Style.RESET_ALL + " and fleeing from " + colorama.Fore.BLUE + str(blue_players) + colorama.Style.RESET_ALL + ".")
+
+
+    driver = Driver()
+
+    rospy.spin()
+
+
+if __name__ == '__main__':
+    main()

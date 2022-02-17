@@ -1,0 +1,8 @@
+<launch>
+    <arg name="rviz_file" default="visualize"/>
+
+    <!-- Launch rviz, loading configuration file -->
+    <node name="rviz" pkg="rviz" type="rviz"
+          args="--display-config $(find p_jbaptista_bringup)/config/$(arg rviz_file).rviz" required="false"/>
+
+</launch>

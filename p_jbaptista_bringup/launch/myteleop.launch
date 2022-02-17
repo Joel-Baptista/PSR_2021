@@ -1,0 +1,17 @@
+<launch>
+    <arg name="player_name" default="p_jbaptista"/>
+
+    <group ns="$(arg player_name)">
+
+        <node pkg="p_jbaptista_bringup" type="myteleop.py" name="myteleop" output="screen">
+            <remap from="/cmd_vel" to="/$(arg player_name)/cmd_vel"/>
+        </node>
+
+<!--        <param name="~default_topic" value="/$(arg player_name)/cmd_vel"/>-->
+    </group>
+
+
+
+
+</launch>
+
